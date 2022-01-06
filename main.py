@@ -17,6 +17,8 @@ import numpy as np
 import Resnet_18
 from csn import ConditionalSimNet
 
+torch.autograd.set_detect_anomaly(True)
+
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
 parser.add_argument('--batch-size', type=int, default=96, metavar='N',
@@ -154,7 +156,7 @@ def main():
     print('  + Number of params: {}'.format(n_parameters))
 
     if args.test:
-        checkpoint = torch.load('runs/%s/'%('new_context_4/') + 'model_best.pth.tar')
+        checkpoint = torch.load('runs/%s/'%('train_1/') + 'model_best.pth.tar')
         tnet.load_state_dict(checkpoint['state_dict'])
         test_acc = test(test_loader, tnet, criterion, 1)
         sys.exit()
@@ -165,7 +167,8 @@ def main():
         # train for one epoch
         train(train_loader, tnet, criterion, optimizer, epoch)
         # evaluate on validation set
-        acc = test(val_loader, tnet, criterion, epoch)
+        #acc = test(val_loader, tnet, criterion, epoch)
+        acc = 0
 
         # remember best acc and save checkpoint
         is_best = acc > best_acc
@@ -178,7 +181,7 @@ def main():
 
     checkpoint = torch.load('runs/%s/'%(args.name) + 'model_best.pth.tar')
     tnet.load_state_dict(checkpoint['state_dict'])
-    test_acc = test(test_loader, tnet, criterion, 1)
+    #test_acc = test(test_loader, tnet, criterion, 1)
 
 def train(train_loader, tnet, criterion, optimizer, epoch):
     losses = AverageMeter()
@@ -204,14 +207,18 @@ def train(train_loader, tnet, criterion, optimizer, epoch):
         loss_triplet = criterion(dista, distb, target)
         loss_embedd = embed_norm / np.sqrt(data1.size(0))
         loss_mask = mask_norm / data1.size(0)
+        loss_embedd = loss_embedd.mean()
+        loss_mask = loss_mask.mean()
         loss = loss_triplet + args.embed_loss * loss_embedd + args.mask_loss * loss_mask
 
         # measure accuracy and record loss
         acc = accuracy(dista, distb)
-        losses.update(loss_triplet.data[0], data1.size(0))
+        losses.update(loss_triplet.item(), data1.size(0))
         accs.update(acc, data1.size(0))
-        emb_norms.update(loss_embedd.data[0])
-        mask_norms.update(loss_mask.data[0])
+         
+        emb_norms.update(loss_embedd.item())
+        
+        mask_norms.update(loss_mask.item())
 
         # compute gradient and do optimizer step
         optimizer.zero_grad()
@@ -237,7 +244,9 @@ def train(train_loader, tnet, criterion, optimizer, epoch):
             plotter.plot_mask(torch.nn.functional.relu(mask_var).data.cpu().numpy().T, epoch)
 
 def test(test_loader, tnet, criterion, epoch):
+
     losses = AverageMeter()
+    torch.cuda.empty_cache()
     accs = AverageMeter()
     accs_cs = {}
     for condition in conditions:
@@ -260,7 +269,7 @@ def test(test_loader, tnet, criterion, epoch):
         if args.cuda:
             target = target.cuda()
         target = Variable(target)
-        test_loss =  criterion(dista, distb, target).data[0]
+        test_loss =  criterion(dista, distb, target).item()
 
         # measure accuracy and record loss
         acc = accuracy(dista, distb)
@@ -282,7 +291,7 @@ def test(test_loader, tnet, criterion, epoch):
         plotter.plot('loss', 'test', epoch, losses.avg)
     return accs.avg
 
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, filename='model_best.pth.tar'):
     """Saves checkpoint to disk"""
     directory = "runs/%s/"%(args.name)
     if not os.path.exists(directory):

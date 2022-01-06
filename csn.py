@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
+import torch.nn.functional as F
 
 class ConditionalSimNet(nn.Module):
     def __init__(self, embeddingnet, n_conditions, embedding_size, learnedmask=True, prein=False):
@@ -44,10 +45,13 @@ class ConditionalSimNet(nn.Module):
             self.masks.weight = torch.nn.Parameter(torch.Tensor(mask_array), requires_grad=False)
     def forward(self, x, c):
         embedded_x = self.embeddingnet(x)
-        self.mask = self.masks(c)
+        mask = self.masks(c)
         if self.learnedmask:
-            self.mask = torch.nn.functional.relu(self.mask)
-        masked_embedding = embedded_x * self.mask
-        norm = torch.norm(masked_embedding, p=2, dim=1) + 1e-10
-        masked_embedding = masked_embedding / norm.expand_as(masked_embedding)
-        return masked_embedding, self.mask.norm(1), embedded_x.norm(2), masked_embedding.norm(2)
+            mask = torch.nn.functional.relu(mask)
+        masked_embedding = embedded_x * mask
+        masked_embedding = F.normalize(masked_embedding, dim=1) 
+        #norm = torch.norm(masked_embedding, p=2, dim=1) + 1e-10
+        #masked_embedding = masked_embedding / norm.unsqueeze(-1).expand_as(masked_embedding)
+        #return masked_embedding, mask.norm(1), embedded_x.norm(2), masked_embedding.norm(2)
+
+        return masked_embedding, torch.norm(mask, dim=1), torch.norm(embedded_x, dim=1), torch.norm(masked_embedding, dim=1) 
